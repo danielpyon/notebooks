@@ -1,5 +1,5 @@
-- [ ] https://colinraffel.com/blog/you-don-t-know-jax.html
-- [ ] https://github.com/srush/LLM-Training-Puzzles?tab=readme-ov-file
+- [ ] https://github.com/srush/Tensor-Puzzles
+- [ ] https://github.com/srush/autodiff-puzzles
 - [x] https://cs231n.github.io/python-numpy-tutorial/
 - [ ] https://numpy.org/doc/stable/user/basics.html
 - [ ] https://arxiv.org/pdf/2304.00409.pdf
