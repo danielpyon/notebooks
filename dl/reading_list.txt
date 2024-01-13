@@ -1,0 +1,2 @@
+https://colinraffel.com/blog/you-don-t-know-jax.html
+https://github.com/srush/LLM-Training-Puzzles?tab=readme-ov-file
