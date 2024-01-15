@@ -1,0 +1,570 @@
+My solutions to srush's tensor puzzles.
+===
+
+
+# Tensor Puzzles
+- by [Sasha Rush](http://rush-nlp.com) - [srush_nlp](https://twitter.com/srush_nlp) (with Marcos Treviso)
+
+
+When learning a tensor programming language like PyTorch or Numpy it
+is tempting to rely on the standard library (or more honestly
+StackOverflow) to find a magic function for everything.  But in
+practice, the tensor language is extremely expressive, and you can
+do most things from first principles and clever use of broadcasting.
+
+
+
+This is a collection of 21 tensor puzzles. Like chess puzzles these are
+not meant to simulate the complexity of a real program, but to practice
+in a simplified environment. Each puzzle asks you to reimplement one
+function in the NumPy standard library without magic.
+
+
+I recommend running in Colab. Click here and copy the notebook to get start.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/srush/Tensor-Puzzles/blob/main/Tensor%20Puzzlers.ipynb)
+
+!pip install -qqq torchtyping hypothesis pytest git+https://github.com/chalk-diagrams/chalk
+!wget -q https://github.com/srush/Tensor-Puzzles/raw/main/lib.py
+
+from lib import draw_examples, make_test, run_test
+import torch
+import numpy as np
+from torchtyping import TensorType as TT
+tensor = torch.tensor
+
+## Rules
+
+1. These puzzles are about *broadcasting*. Know this rule.
+
+![](https://pbs.twimg.com/media/FQywor0WYAssn7Y?format=png&name=large)
+
+2. Each puzzle needs to be solved in 1 line (<80 columns) of code.
+3. You are allowed @, arithmetic, comparison, `shape`, any indexing (e.g. `a[:j], a[:, None], a[arange(10)]`), and previous puzzle functions.
+4. You are *not allowed* anything else. No `view`, `sum`, `take`, `squeeze`, `tensor`.
+
+5. You can start with these two functions:
+
+def arange(i: int):
+    "Use this function to replace a for-loop."
+    return torch.tensor(range(i))
+
+draw_examples("arange", [{"" : arange(i)} for i in [5, 3, 9]])
+
+# Example of broadcasting.
+examples = [(arange(4), arange(5)[:, None]) ,
+            (arange(3)[:, None], arange(2))]
+draw_examples("broadcast", [{"a": a, "b":b, "ret": a + b} for a, b in examples])
+
+def where(q, a, b):
+    "Use this function to replace an if-statement."
+    return (q * a) + (~q) * b
+
+# In diagrams, orange is positive/True, where is zero/False, and blue is negative.
+
+examples = [(tensor([False]), tensor([10]), tensor([0])),
+            (tensor([False, True]), tensor([1, 1]), tensor([-10, 0])),
+            (tensor([False, True]), tensor([1]), tensor([-10, 0])),
+            (tensor([[False, True], [True, False]]), tensor([1]), tensor([-10, 0])),
+            (tensor([[False, True], [True, False]]), tensor([[0], [10]]), tensor([-10, 0])),
+           ]
+draw_examples("where", [{"q": q, "a":a, "b":b, "ret": where(q, a, b)} for q, a, b in examples])
+
+## Puzzle 1 - ones
+
+Compute [ones](https://numpy.org/doc/stable/reference/generated/numpy.ones.html) - the vector of all ones.
+
+def ones_spec(out):
+    for i in range(len(out)):
+        out[i] = 1
+
+# allowed: prev functions (arange/tensor), @, arithmetic, comparison, shape, any indexing
+
+def ones(i: int) -> TT["i"]:
+    return where(arange(i) > -1, 1, 0)
+
+test_ones = make_test("one", ones, ones_spec, add_sizes=["i"])
+
+run_test(test_ones)
+
+## Puzzle 2 - sum
+
+Compute [sum](https://numpy.org/doc/stable/reference/generated/numpy.sum.html) - the sum of a vector.
+
+def sum_spec(a, out):
+    out[0] = 0
+    for i in range(len(a)):
+        out[0] += a[i]
+
+# allowed: prev functions (arange/tensor), @, arithmetic, comparison, shape, any indexing
+# [1,2,3]->[1+2+3]
+
+def sum(a: TT["i"]) -> TT[1]:
+    # return tensor([ones(a.shape[0]) @ a])
+    return ones(a.shape[0]) @ a[:, None]
+
+test_sum = make_test("sum", sum, sum_spec)
+
+run_test(test_sum)
+
+## Puzzle 3 - outer
+
+Compute [outer](https://numpy.org/doc/stable/reference/generated/numpy.outer.html) - the outer product of two vectors.
+
+def outer_spec(a, b, out):
+    for i in range(len(out)):
+        for j in range(len(out[0])):
+            out[i][j] = a[i] * b[j]
+
+def outer(a: TT["i"], b: TT["j"]) -> TT["i", "j"]:
+    # (4,1)*(5,) -> (4,5)
+    return a[:, None] * b[None,:] # treat a as column, b as row
+
+test_outer = make_test("outer", outer, outer_spec)
+
+run_test(test_outer)
+
+## Puzzle 4 - diag
+
+Compute [diag](https://numpy.org/doc/stable/reference/generated/numpy.diag.html) - the diagonal vector of a square matrix.
+
+def diag_spec(a, out):
+    for i in range(len(a)):
+        out[i] = a[i][i]
+
+def diag(a: TT["i", "i"]) -> TT["i"]:
+    # (where/arange/ones/sum/outer), @, arithmetic, comparison, shape, any indexing
+    return a[arange(a.shape[0]), arange(a.shape[0])]
+
+test_diag = make_test("diag", diag, diag_spec)
+
+run_test(test_diag)
+
+## Puzzle 5 - eye
+
+Compute [eye](https://numpy.org/doc/stable/reference/generated/numpy.eye.html) - the identity matrix.
+
+def eye_spec(out):
+    for i in range(len(out)):
+        out[i][i] = 1
+
+def eye(j: int) -> TT["j", "j"]:
+    return where(arange(j)[:,None] == arange(j)[None,:], 1, 0)
+
+test_eye = make_test("eye", eye, eye_spec, add_sizes=["j"])
+
+run_test(test_eye)
+
+## Puzzle 6 - triu
+
+Compute [triu](https://numpy.org/doc/stable/reference/generated/numpy.triu.html) - the upper triangular matrix.
+
+def triu_spec(out):
+    for i in range(len(out)):
+        for j in range(len(out)):
+            if i <= j:
+                out[i][j] = 1
+            else:
+                out[i][j] = 0
+
+def triu(j: int) -> TT["j", "j"]:
+    return 1 * (arange(j)[:,None] <= arange(j)[None,:])
+
+
+test_triu = make_test("triu", triu, triu_spec, add_sizes=["j"])
+
+run_test(test_triu)
+
+## Puzzle 7 - cumsum
+
+Compute [cumsum](https://numpy.org/doc/stable/reference/generated/numpy.cumsum.html) - the cumulative sum.
+
+def cumsum_spec(a, out):
+    total = 0
+    for i in range(len(out)):
+        out[i] = total + a[i]
+        total += a[i]
+
+def cumsum(a: TT["i"]) -> TT["i"]:
+    return triu(a.shape[0]).T @ a
+
+test_cumsum = make_test("cumsum", cumsum, cumsum_spec)
+
+run_test(test_cumsum)
+
+## Puzzle 8 - diff
+
+Compute [diff](https://numpy.org/doc/stable/reference/generated/numpy.diff.html) - the running difference.
+
+def diff_spec(a, out):
+    out[0] = a[0]
+    for i in range(1, len(out)):
+        out[i] = a[i] - a[i - 1]
+
+def diff(a: TT["i"], i: int) -> TT["i"]:
+    # return (eye(i) - 1*(arange(i)[:,None] - arange(i)[None,:] == 1)) @ a
+    '''
+    [3,1,4] - [0,3,1]
+    a[-1,0,1] = [4,3,1]
+
+    '''
+    return a - where(arange(i)!=0, a[arange(i)-1], 0)
+
+test_diff = make_test("diff", diff, diff_spec, add_sizes=["i"])
+
+run_test(test_diff)
+
+## Puzzle 9 - vstack
+
+Compute [vstack](https://numpy.org/doc/stable/reference/generated/numpy.vstack.html) - the matrix of two vectors
+
+def vstack_spec(a, b, out):
+    for i in range(len(out[0])):
+        out[0][i] = a[i]
+        out[1][i] = b[i]
+
+def vstack(a: TT["i"], b: TT["i"]) -> TT[2, "i"]:
+    # [1,2,3] [4,5,6] -> [1,2,3]
+    #                    [4,5,6]
+    # return a * (1-arange(2))[:,None] + b * arange(2)[:,None]
+
+
+    # alternative solution using "where" mask
+    # want: [1,1,1]
+    #       [0,0,0]
+    # actually: [0,0,0]
+    #           [1,1,1], then do where(..., b,a)
+    return where(arange(2)[:,None] == ones(a.shape[0]), b, a)
+
+test_vstack = make_test("vstack", vstack, vstack_spec)
+
+run_test(test_vstack)
+
+## Puzzle 10 - roll
+
+Compute [roll](https://numpy.org/doc/stable/reference/generated/numpy.roll.html) - the vector shifted 1 circular position.
+
+def roll_spec(a, out):
+    for i in range(len(out)):
+        if i + 1 < len(out):
+            out[i] = a[i + 1]
+        else:
+            out[i] = a[i + 1 - len(out)]
+
+def roll(a: TT["i"], i: int) -> TT["i"]:
+    # [1, 2, 3, 4, 5] -> [2, 3, 4, 5, 1]
+    # basically, shift left by one position
+
+    # want: [1, 2, ..., i-1, 0]
+    return a[(arange(i)+1)%i]
+
+
+test_roll = make_test("roll", roll, roll_spec, add_sizes=["i"])
+
+run_test(test_roll)
+
+## Puzzle 11 - flip
+
+Compute [flip](https://numpy.org/doc/stable/reference/generated/numpy.flip.html) - the reversed vector
+
+def flip_spec(a, out):
+    for i in range(len(out)):
+        out[i] = a[len(out) - i - 1]
+
+def flip(a: TT["i"], i: int) -> TT["i"]:
+    # want: i-1,i-2,...,0
+    # solution: [3,3,3,3]-[0,1,2,3]=[3,2,1,0]
+    return a[i-1-arange(i)]
+
+
+test_flip = make_test("flip", flip, flip_spec, add_sizes=["i"])
+
+run_test(test_flip)
+
+## Puzzle 12 - compress
+
+
+Compute [compress](https://numpy.org/doc/stable/reference/generated/numpy.compress.html) - keep only masked entries (left-aligned).
+
+def compress_spec(g, v, out):
+    j = 0
+    for i in range(len(g)):
+        if g[i]:
+            out[j] = v[i]
+            j += 1
+
+def compress(g: TT["i", bool], v: TT["i"], i:int) -> TT["i"]:
+    return where(g, arange(i)[:,None]==(cumsum(1*g)-1), 0) @ v
+
+test_compress = make_test("compress", compress, compress_spec, add_sizes=["i"])
+
+run_test(test_compress)
+
+## Puzzle 13 - pad_to
+
+
+Compute pad_to - eliminate or add 0s to change size of vector.
+
+def pad_to_spec(a, out):
+    for i in range(min(len(out), len(a))):
+        out[i] = a[i]
+
+
+def pad_to(a: TT["i"], i: int, j: int) -> TT["j"]:
+    return (1*(arange(j)[:,None] == arange(i)))@a
+
+
+test_pad_to = make_test("pad_to", pad_to, pad_to_spec, add_sizes=["i", "j"])
+
+run_test(test_pad_to)
+
+## Puzzle 14 - sequence_mask
+
+
+Compute [sequence_mask](https://www.tensorflow.org/api_docs/python/tf/sequence_mask) - pad out to length per batch.
+
+def sequence_mask_spec(values, length, out):
+    for i in range(len(out)):
+        for j in range(len(out[0])):
+            if j < length[i]:
+                out[i][j] = values[i][j]
+            else:
+                out[i][j] = 0
+
+def sequence_mask(values: TT["i", "j"], length: TT["i", int]) -> TT["i", "j"]:
+    # length vector specifies a max length for each row of values
+    # any column beyond the length should be set to zero
+
+    return where(arange(values.shape[1])[None,:] < length[:,None], values, 0)
+
+
+def constraint_set_length(d):
+    d["length"] = d["length"] % d["values"].shape[1]
+    return d
+
+
+test_sequence = make_test("sequence_mask",
+    sequence_mask, sequence_mask_spec, constraint=constraint_set_length
+)
+
+run_test(test_sequence)
+
+## Puzzle 15 - bincount
+
+Compute [bincount](https://numpy.org/doc/stable/reference/generated/numpy.bincount.html) - count number of times an entry was seen.
+
+def bincount_spec(a, out):
+    for i in range(len(a)):
+        out[a[i]] += 1
+
+def bincount(a: TT["i"], j: int) -> TT["j"]:
+    # [1,2,3,3,1] -> [0,2,1,2,0]
+    # turn input a into jxa matrix
+    # then for each row, mask out the irrelevant indices (== arange(j))
+    # do a sum across axis=1
+
+    sum_ax1 = lambda m: m@ones(m.shape[1])
+    return sum_ax1(1*(a[None,:]*ones(j)[:,None] == arange(j)[:,None]))
+
+def constraint_set_max(d):
+    d["a"] = d["a"] % d["return"].shape[0]
+    return d
+
+
+test_bincount = make_test("bincount",
+    bincount, bincount_spec, add_sizes=["j"], constraint=constraint_set_max
+)
+
+run_test(test_bincount)
+
+## Puzzle 16 - scatter_add
+
+Compute [scatter_add](https://pytorch-scatter.readthedocs.io/en/1.3.0/functions/add.html) - add together values that link to the same location.
+
+def scatter_add_spec(values, link, out):
+    for j in range(len(values)):
+        out[link[j]] += values[j]
+
+def scatter_add(values: TT["i"], link: TT["i"], j: int) -> TT["j"]:
+    '''
+    v: values array
+    l: link array (indices into output array)
+    j: size of output array
+
+    align v and l. l tells you the output index for the values in v.
+
+    for example:
+    j=2
+    v=[10,20,30]
+    l=[ 0, 0, 1]
+
+    output should be: [30,30]
+
+    tricks:
+    - past functions
+    - matrix multiplication
+    - where
+    - broadcasting
+    '''
+
+    # x=(values * ones(j)[:,None])
+    # y=link == arange(j)[:,None]
+    # print(values)
+    # print(link)
+    # print(x*y)
+    # print('--')
+    # sum across axis 1
+    sum_ax1 = lambda m: m@ones(m.shape[1]) # not cheating; could compress into single line
+    return sum_ax1((values * ones(j)[:,None]) * (1*(link == arange(j)[:,None])))
+
+def constraint_set_max(d):
+    d["link"] = d["link"] % d["return"].shape[0]
+    return d
+
+
+test_scatter_add = make_test("scatter_add",
+    scatter_add, scatter_add_spec, add_sizes=["j"], constraint=constraint_set_max
+)
+
+run_test(test_scatter_add)
+
+## Puzzle 17 - flatten
+
+Compute [flatten](https://numpy.org/doc/stable/reference/generated/numpy.ndarray.flatten.html)
+
+def flatten_spec(a, out):
+    k = 0
+    for i in range(len(a)):
+        for j in range(len(a[0])):
+            out[k] = a[i][j]
+            k += 1
+
+def flatten(a: TT["i", "j"], i:int, j:int) -> TT["i * j"]:
+    return a[arange(i*j)//j, arange(i*j)%j]
+
+test_flatten = make_test("flatten", flatten, flatten_spec, add_sizes=["i", "j"])
+
+run_test(test_flatten)
+
+## Puzzle 18 - linspace
+
+Compute [linspace](https://numpy.org/doc/stable/reference/generated/numpy.linspace.html)
+
+def linspace_spec(i, j, out):
+    for k in range(len(out)):
+        out[k] = float(i + (j - i) * k / max(1, len(out) - 1))
+
+def linspace(i: TT[1], j: TT[1], n: int) -> TT["n", float]:
+    return i + (j-i)/( max(1,n-1) ) * arange(n)
+
+test_linspace = make_test("linspace", linspace, linspace_spec, add_sizes=["n"])
+
+run_test(test_linspace)
+
+## Puzzle 19 - heaviside
+
+Compute [heaviside](https://numpy.org/doc/stable/reference/generated/numpy.heaviside.html)
+
+def heaviside_spec(a, b, out):
+    for k in range(len(out)):
+        if a[k] == 0:
+            out[k] = b[k]
+        else:
+            out[k] = int(a[k] > 0)
+
+def heaviside(a: TT["i"], b: TT["i"]) -> TT["i"]:
+    return where(a == 0, b, 1*(a > 0))
+
+test_heaviside = make_test("heaviside", heaviside, heaviside_spec)
+
+run_test(test_heaviside)
+
+## Puzzle 20 - repeat (1d)
+
+Compute [repeat](https://pytorch.org/docs/stable/generated/torch.Tensor.repeat.html)
+
+def repeat_spec(a, d, out):
+    for i in range(d[0]):
+        for k in range(len(a)):
+            out[i][k] = a[k]
+
+def constraint_set(d):
+    d["d"][0] = d["return"].shape[0]
+    return d
+
+def repeat(a: TT["i"], d: TT[1]) -> TT["d", "i"]:
+    return ones(d)[:,None] * a
+
+test_repeat = make_test("repeat", repeat, repeat_spec, constraint=constraint_set)
+run_test(test_repeat)
+
+
+## Puzzle 21 - bucketize
+
+Compute [bucketize](https://pytorch.org/docs/stable/generated/torch.bucketize.html)
+
+def bucketize_spec(v, boundaries, out):
+    for i, val in enumerate(v):
+        out[i] = 0
+        for j in range(len(boundaries)-1):
+            if val >= boundaries[j]:
+                out[i] = j + 1
+        if val >= boundaries[-1]:
+            out[i] = len(boundaries)
+
+def constraint_set(d):
+    d["boundaries"] = np.abs(d["boundaries"]).cumsum()
+    return d
+
+def bucketize(v: TT["i"], boundaries: TT["j"]) -> TT["i"]:
+    # v=[2,0.2,0.6,0.8,0.1]
+    # b=[0,0.5,1]
+    # o=[3,1,2,2,1]
+    
+    # note: output should contain index into bins array for each element
+    # in particular, the index is the "right endpoint" of the bin
+    # so for example, if a value lies between 0.5 and 1, the correct index
+    # for that value is the index of the right endpoint
+
+    # simple example: take a single element of v.
+    # how do we find its correct index in the bin?
+
+    # idea: what if we compute v >= b?
+    # 0.8 >= [0,0.5,1] becomes [True, True, False]
+    # therefore, the correct index is the rightmost True plus 1 (since we want the right endpoint)
+    # another way to think about it is the index of the leftmost False
+    
+    # subproblem: how do we compute the bin index?
+    # just sum the comparison array: for example, [1,1,1,1,1,0,0,0,0]
+    # sum of this array is 5, which is also the rightmost index into the bin array
+    # with a lot of these problems, it's helpful to visualize the tensor ops
+
+    # edge case: does this generalize when the value is less than the smallest boundary?
+    # yes: -1 >= [0,0.5,1] becomes [0,0,0], so their sum is 0 (index of rightmost boundary)
+
+    # generalization: can we vectorize this for the entire arrays v and b?
+    # use broadcasting: sum(v >= b, axis=0)
+
+    sum_ax0 = lambda m: ones(m.shape[0])@m
+    return sum_ax0(1*(v[None,:] >= boundaries[:,None]))
+
+test_bucketize = make_test("bucketize", bucketize, bucketize_spec,
+                           constraint=constraint_set)
+run_test(test_bucketize)
+
+
+
+## Speed Run Mode!
+### What is the smallest you can make each of these?
+
+import inspect
+fns = (ones, sum, outer, diag, eye, triu, cumsum, diff, vstack, roll, flip,
+       compress, pad_to, sequence_mask, bincount, scatter_add)
+
+for fn in fns:
+    lines = [l for l in inspect.getsource(fn).split("\n") if not l.strip().startswith("#")]
+
+    if len(lines) > 3:
+        print(fn.__name__, len(lines[2]), "(more than 1 line)")
+    else:
+        print(fn.__name__, len(lines[1]))
